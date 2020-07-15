@@ -1,6 +1,7 @@
 <?php
 
 /**
+ *
  * README:
  * This backup script will dump the local Database to a file and zip it along with your html directory. Then, upload that zip file to S3.
  * Also, it will cleanup any old backups on S3
@@ -72,6 +73,15 @@
  *      • Any backups older than one year should only be kept if they were taken on the first of Jan
  *      • Any backups older than one month should only be kept if they were taken on the first of the month
  *      • Any backups older than one week should only be kept if they were taken on Monday or the first of the month
+ *
+ *
+ *
+ * TODO:
+ *  1) restore.php should call the firstTimeSetup of this script
+ *  2) After zipping we should check that all the files we wanted to skip actually exist in the zip file
+ *  3) Add a webhook or some sort of email callback that gets fired when this script throw an exception
+ *  4) Add a mysql options array to .config for https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html#mysqldump-option-summary
+ *  5) validateConfig() validate the MYSQL config.
  *
  */
 
@@ -302,7 +312,7 @@ class MyBackupFunction
         echo "done" . PHP_EOL;
         // var_dump($result);
 
-        if (!is_file($tempMysqlBackupPath) || !is_readable($tempMysqlBackupPath)) {
+        if (!is_file($tempMysqlBackupPath) || !is_readable($tempMysqlBackupPath) || !filesize($tempMysqlBackupPath)) {
             throw new Exception("Error while creating MYSQL dump");
         }
 
@@ -313,11 +323,14 @@ class MyBackupFunction
     {
         //if ($config['DB_DATABASE'] === '--all-databases') {
         //    $databases = '--all-databases';
-        //} else 
-        if (is_array($config['DB_DATABASE'])) {
-            $databases = '--databases ' . implode(' ', array_map('escapeshellarg', $config['DB_DATABASE']));
+        //}
+
+        $databases = is_array($config['DB_DATABASE']) ? $config['DB_DATABASE'] : [$config['DB_DATABASE']];
+
+        if ($databases) {
+            $databases = '--databases ' . implode(' ', array_map('escapeshellarg', $databases));
         } else {
-            $databases = escapeshellarg($config['DB_DATABASE']);
+            $databases = "";
         }
 
         return "" .
@@ -338,6 +351,16 @@ class MyBackupFunction
 
     private function createZip($filesToAddToZip)
     {
+
+        // Unixs zip command cannot handle dots in the path e.g. /path/./dump.sql
+        foreach ($filesToAddToZip as &$file) {
+            if ($real = realpath($file)) {
+                $file = $real;
+            } else {
+                throw new Exception("ERROR: file doesn't exist. '$file'");
+            }
+        }
+        unset($file);        // Always unset
 
         // Convert $pathsToBackup to a string
         if (count($filesToAddToZip)) {
@@ -373,7 +396,8 @@ class MyBackupFunction
 
     private function getTempDirectory($path = null)
     {
-        return __DIR__ . '/temp' . ($path ? "/{$path}" : '');
+        return Utils::getTempDirectory($path);
+        //return __DIR__ . '/temp' . ($path ? "/{$path}" : '');
     }
 
     private function getS3Client($config)
@@ -429,11 +453,10 @@ class MyBackupFunction
     private function uploadToS3($zip, $config, $client)
     {
 
-        echo PHP_EOL . "Uploading backup to S3...";
-
-
         // Send a PutObject request and get the result object.
         $key = basename($zip);
+
+        echo PHP_EOL . "Uploading ({$key}) backup to S3...";
 
         $result = $client->putObject([
             'Bucket'     => $config['AWS_BUCKET'],
@@ -503,7 +526,7 @@ class CleanUpS3
             self::deleteFilesOffS3($deleteTheseFiles, $config, $client);
             echo ' done' . PHP_EOL;
         } else {
-            echo "No action takes (No old backups found on S3)" . PHP_EOL;
+            echo "No clean up required" . PHP_EOL;
         }
 
     }
@@ -589,7 +612,7 @@ class CleanUpS3
             if (preg_match('/^(\\d{4})-(\\d{2})-(\\d{2})_(\\d{2})-(\\d{2})-(\\d{2})-backup\\.zip/', $fileName, $matches)) {
                 $resultArray[$fileName] = new DateTime("$matches[1]-$matches[2]-$matches[3] $matches[4]:$matches[5]:$matches[6]");
             } else {
-                echo "ERROR: Unrecognised file in S3 $fileName" . PHP_EOL;
+                echo "Unrecognised file in S3 $fileName" . PHP_EOL;
             }
 
         }
@@ -658,4 +681,39 @@ class CleanUpS3
             ],
         ]);
     }
+}
+
+class Utils
+{
+
+
+    public static function getTempDirectory($path)
+    {
+
+        if ($path) {
+
+            $pi = pathinfo($path);
+
+            $dirname = $pi['dirname'] ?? null;
+            $filename = $pi['filename'] ?? null;
+            $extension = $pi['extension'] ?? null;
+
+            $i = 0;
+            do {
+
+                $upCountedPath =
+                    implode('/', array_filter([$dirname, $filename])) .     // Directory + file name
+                    ($i++ ? "_" . str_pad($i, 2, "0", STR_PAD_LEFT) : '') .   // Upcount "_02"
+                    ($extension ? ".{$extension}" : '');
+
+                $outFilePath = __DIR__ . '/temp' . ('/' . ltrim($upCountedPath, '/'));
+
+            } while (file_exists($outFilePath));
+
+            return $outFilePath;
+        } else {
+            return $outFilePath = __DIR__ . '/temp';
+        }
+    }
+
 }

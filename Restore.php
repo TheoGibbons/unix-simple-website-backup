@@ -87,6 +87,11 @@ class MyBackupRestorer
         }
 
         $selected = $GLOBALS['argv'][1] ?? null;
+
+        if ($selected && !in_array($selected, $allS3Archives)) {
+            echo "$selected is invalid try again." . PHP_EOL;
+        }
+
         while (!$selected || !in_array($selected, $allS3Archives)) {
             $selected = $this->readLine("Enter one of the file names: ");
 
@@ -220,6 +225,12 @@ class MyBackupRestorer
         echo PHP_EOL . "*********** MYSQL import ***********" . PHP_EOL;
         echo "Extracting Mysql dump from the zip." . PHP_EOL;
         $pathToSqlFile = $this->extractMysqlFromZip($tempZipPath);
+        if (!$pathToSqlFile) {
+            // The user wants to skip the MYSQL import
+            echo "SKIPPED" . PHP_EOL;
+            return null;
+        }
+
         echo "Extracted sql file to {$pathToSqlFile}" . PHP_EOL . PHP_EOL;
 
         echo "Importing the sql file into the database." . PHP_EOL;
@@ -240,11 +251,20 @@ class MyBackupRestorer
         $za->open($tempZipPath);
 
         $filePath = ($GLOBALS['argv'][2] ?? null);
+
+        if ($filePath === 'SKIP') {
+            return null;
+        }
+
         $fp = $filePath ? $za->getStream($filePath) : null;
+
+        if ($filePath && !$fp) {
+            echo "ERROR: You passed '$filePath' in as a script argument, but this file doesn't exist." . PHP_EOL;
+        }
 
         if (!$fp) {
 
-            echo "Here are all .sql files in the zip:" . PHP_EOL;
+            $sqlFiles = [];
             for ($i = 0; $i < $za->numFiles; $i++) {
                 $stat = $za->statIndex($i);
                 $filePath = $stat['name'];
@@ -253,13 +273,27 @@ class MyBackupRestorer
 
 
                 if (preg_match('/\\.sql$/i', $filePath)) {
-                    echo " • {$filePath}";
+                    $sqlFiles[] = $filePath;
                 }
+            }
+
+
+            echo "Here are all .sql files in the zip:" . PHP_EOL;
+            if (count($sqlFiles)) {
+                foreach ($sqlFiles as $sqlFilePath) {
+                    echo " • {$sqlFilePath}" . PHP_EOL;
+                }
+            } else {
+                echo "No .sql files found" . PHP_EOL;
             }
 
             while (!$fp) {
 
-                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file):");
+                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file) OR type \"SKIP\" (no quotes):");
+
+                if ($filePath === 'SKIP') {
+                    return null;
+                }
 
                 $fp = $za->getStream($filePath);
 
@@ -320,6 +354,12 @@ class MyBackupRestorer
         echo PHP_EOL . "*********** Extract files ***********." . PHP_EOL;
 
         $filePathInZip = $this->getFilePathInZip($tempZipPath);
+        if (!$filePathInZip) {
+            // The user wants to skip the file import
+            echo "SKIPPED" . PHP_EOL;
+            return null;
+        }
+
         $filePathInflated = $this->getFilePathDestination();
 
         echo PHP_EOL . "Extracting zip:`{$filePathInZip}` to `$filePathInflated` this may take a while...";
@@ -336,7 +376,16 @@ class MyBackupRestorer
         $za->open($tempZipPath);
 
         $filePath = ($GLOBALS['argv'][3] ?? null);
+
+        if ($filePath === 'SKIP') {
+            return null;
+        }
+
         $fp = $filePath ? $za->getStream($filePath) : null;
+
+        if ($filePath && !$fp) {
+            echo "ERROR: You passed '$filePath' in as a script argument, but this file doesn't exist." . PHP_EOL;
+        }
 
         if (!$fp) {
 
@@ -385,7 +434,11 @@ class MyBackupRestorer
 
             while (!$fp) {
 
-                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract:");
+                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract OR type \"SKIP\" (no quotes):");
+
+                if ($filePath === 'SKIP') {
+                    return null;
+                }
 
                 $fp = $za->getStream($filePath);
 
@@ -407,6 +460,10 @@ class MyBackupRestorer
     {
 
         $filePath = ($GLOBALS['argv'][4] ?? null);
+
+        if ($filePath && file_exists($filePath)) {
+            echo "This directory already exists, try again." . PHP_EOL;
+        }
 
         while (!$filePath || file_exists($filePath)) {
 
@@ -491,7 +548,7 @@ class Utils
 {
 
 
-    public static function getTempDirectory($path)
+    public static function getTempDirectory($path = null)
     {
 
         if ($path) {
