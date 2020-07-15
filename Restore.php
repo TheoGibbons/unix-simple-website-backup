@@ -11,16 +11,7 @@ $CONFIG = require('.config.php');
 date_default_timezone_set($CONFIG['timezone_identifier']);
 /*********************** /CONFIG ***********************/
 
-$restore = new MyBackupRestorer([
-    'AWS_REGION' => $CONFIG['restore_config']['AWS_REGION'],
-    'AWS_BUCKET' => $CONFIG['restore_config']['AWS_BUCKET'],
-    'AWS_KEY'    => $CONFIG['restore_config']['AWS_KEY'],
-    'AWS_SECRET' => $CONFIG['restore_config']['AWS_SECRET'],
-
-    'DB_USERNAME' => $CONFIG['restore_config']['DB_USERNAME'],
-    'DB_PASSWORD' => $CONFIG['restore_config']['DB_PASSWORD'],
-    'DB_PORT'     => $CONFIG['restore_config']['DB_PORT'],
-]);
+$restore = new MyBackupRestorer($CONFIG['restore_config']);
 
 $restore->run();
 
@@ -37,9 +28,10 @@ class MyBackupRestorer
         'DB_USERNAME' => '',
         'DB_PASSWORD' => '',
         'DB_PORT'     => '',
+        'DB_DATABASE' => '',
     ];
 
-    private $s3Client = null;
+    private $s3Client;
 
     function __construct($config)
     {
@@ -71,11 +63,11 @@ class MyBackupRestorer
 
         $this->extractFiles($tempZipPath);
 
-        echo "Now deleting $tempZipPath...";
+        echo "Now deleting `$tempZipPath`...";
         unlink($tempZipPath);
-        echo "done" . PHP_EOL;
+        echo "done" . PHP_EOL . PHP_EOL;
 
-        echo "DONE SUCCESS.";
+        echo "DONE SUCCESS." . PHP_EOL . "Remember to setup file permissions." . PHP_EOL . PHP_EOL;
 
     }
 
@@ -87,15 +79,15 @@ class MyBackupRestorer
     {
         $allS3Archives = $this->getAllFilesOnS3();
 
+        echo PHP_EOL . "*********** S3 download ***********." . PHP_EOL;
         echo "Here is a list of all files within S3." . PHP_EOL;
 
         foreach ($allS3Archives as $file) {
             echo " • {$file}" . PHP_EOL;
         }
 
-        $selected = null;
+        $selected = $GLOBALS['argv'][1] ?? null;
         while (!$selected || !in_array($selected, $allS3Archives)) {
-            echo "Enter one of the file names:" . PHP_EOL;
             $selected = $this->readLine("Enter one of the file names: ");
 
             if (!in_array($selected, $allS3Archives)) {
@@ -150,17 +142,18 @@ class MyBackupRestorer
 
     private function downloadS3Item($s3ArchiveKey)
     {
-        $saveS3ArchiveHere = Utils::getTempDirectory(basename($s3ArchiveKey));
 
         $s3FileSize = $this->getS3FileSize($s3ArchiveKey);
-        echo "S3 file '{$s3ArchiveKey}' is {$s3FileSize}Bytes" . PHP_EOL;
+        echo "S3 file '{$s3ArchiveKey}' is " . number_format($s3FileSize) . "Bytes" . PHP_EOL;
 
         $diskFreeSpace = disk_free_space("/");
-        echo "You have {$s3FileSize}Bytes free disk space" . PHP_EOL;
+        echo "You have " . number_format($diskFreeSpace) . "Bytes free disk space" . PHP_EOL . PHP_EOL;
 
         if ($diskFreeSpace < $s3FileSize) {
-            die("ERROR: Not enough free disk space to download the zip file off S3.");
+            throw new Exception("ERROR: Not enough free disk space to download the zip file off S3.");
         }
+
+        $saveS3ArchiveHere = Utils::getTempDirectory(basename($s3ArchiveKey));
 
         echo "Downloading zip file from S3 to {$saveS3ArchiveHere}" . PHP_EOL;
         $this->downloadFileOffS3($s3ArchiveKey, $saveS3ArchiveHere);
@@ -178,15 +171,8 @@ class MyBackupRestorer
             // Key is required
             'Key'    => $s3ArchiveKey,
         ));
-        var_dump($result->ContentLength);
-        die();
-        //TODO
-        die($result->getBody() . '');
-
-        $body = $result->getBody() . '';
-        $body = json_decode($body, true);
-
-        return $body['ContentLength'];
+        // var_dump($result);
+        return $result['ContentLength'];
     }
 
     private function getS3Etag($s3ArchiveKey)
@@ -197,33 +183,26 @@ class MyBackupRestorer
             // Key is required
             'Key'    => $s3ArchiveKey,
         ));
-
-        //TODO
-        die($result->getBody() . '');
-
-        $body = $result->getBody() . '';
-        $body = json_decode($body, true);
-
-        return $body['ETAG'];
+        // var_dump($result);
+        return trim($result['ETag'], '"');
     }
 
     private function downloadFileOffS3($s3ArchiveKey, $saveS3ArchiveHere)
     {
-        //TODO
 
         // The Amazon S3 stream wrapper enables you to store and retrieve data from Amazon S3 using built-in PHP functions,
         // such as file_get_contents, fopen, copy, rename, unlink, mkdir, and rmdir.
         $this->s3Client->registerStreamWrapper();
 
-        $s3Stream = fopen("s3://{$s3ArchiveKey}", 'r');
+        $s3Stream = fopen("s3://{$this->config['AWS_BUCKET']}/{$s3ArchiveKey}", 'r');
         if (!$s3Stream) {
-            die("Couldn't open stream for s3://{$s3ArchiveKey}");
+            throw new Exception("Couldn't open stream for s3://{$this->config['AWS_BUCKET']}/{$s3ArchiveKey}");
         }
 
         $localStream = fopen($saveS3ArchiveHere, 'w');
         if (!$localStream) {
             fclose($s3Stream);
-            die("Couldn't open stream for {$saveS3ArchiveHere}");
+            throw new Exception("Couldn't open stream for {$saveS3ArchiveHere}");
         }
 
         stream_copy_to_stream($s3Stream, $localStream);
@@ -238,15 +217,16 @@ class MyBackupRestorer
 
     private function extractAndImportMysql($tempZipPath)
     {
+        echo PHP_EOL . "*********** MYSQL import ***********." . PHP_EOL;
         echo "Extracting Mysql dump from the zip." . PHP_EOL;
         $pathToSqlFile = $this->extractMysqlFromZip($tempZipPath);
-        echo "Extracted sql file to {$pathToSqlFile}" . PHP_EOL;
+        echo "Extracted sql file to {$pathToSqlFile}" . PHP_EOL . PHP_EOL;
 
         echo "Importing the sql file into the database." . PHP_EOL;
         $this->importSqlFile($pathToSqlFile);
         echo "SQL file imported into the database." . PHP_EOL;
 
-        echo "Deleting {$pathToSqlFile}...";
+        echo PHP_EOL . "Deleting {$pathToSqlFile}...";
         unlink($pathToSqlFile);
         echo " done" . PHP_EOL;
     }
@@ -254,43 +234,50 @@ class MyBackupRestorer
     private function extractMysqlFromZip($tempZipPath)
     {
 
-        echo "Getting a list of potential sql files in the zip:" . PHP_EOL;
 
         $za = new \ZipArchive();
 
         $za->open($tempZipPath);
 
-        for ($i = 0; $i < $za->numFiles; $i++) {
-            $stat = $za->statIndex($i);
-            $filePath = $stat['name'];
-            $fileName = basename($filePath);
-//            print_r($fileName . PHP_EOL);
+        $filePath = ($GLOBALS['argv'][2] ?? null);
+        $fp = $filePath ? $za->getStream($filePath) : null;
+
+        if (!$fp) {
+
+            echo "Here are all .sql files in the zip:" . PHP_EOL;
+            for ($i = 0; $i < $za->numFiles; $i++) {
+                $stat = $za->statIndex($i);
+                $filePath = $stat['name'];
+                //$fileName = basename($filePath);
+                //print_r($fileName . PHP_EOL);
 
 
-            if (preg_match('/\\.sql$/i', $filePath)) {
-                echo " • {$filePath}";
+                if (preg_match('/\\.sql$/i', $filePath)) {
+                    echo " • {$filePath}";
+                }
             }
+
+            while (!$fp) {
+
+                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file):");
+
+                $fp = $za->getStream($filePath);
+
+                if (!$fp) {
+                    echo PHP_EOL . "Invalid path, try again.";
+                }
+
+            }
+
         }
-
-        do {
-
-            $filePath = $this->readLine("Enter path to the .sql file:");
-
-            $fp = $za->getStream($filePath);
-
-            if (!$fp) {
-                echo "Invalid path, try again.";
-            }
-
-        } while (!$fp);
 
         $saveSqlFileHere = Utils::getTempDirectory(basename($filePath));
 
-        echo "Extracting {$filePath} to {$saveSqlFileHere}";
+        echo PHP_EOL . "Extracting {$filePath} to {$saveSqlFileHere}" . PHP_EOL;
 
         $local_fp = fopen($saveSqlFileHere, "w");
         while ($buf = fread($fp, 1024)) {
-            echo $buf;
+            //echo $buf;
             fwrite($local_fp, $buf);
         }
         fclose($fp);
@@ -303,10 +290,19 @@ class MyBackupRestorer
     private function importSqlFile($pathToSqlFile)
     {
         $command = $this->getMySqlImportCommand($pathToSqlFile);
+        echo $command . PHP_EOL;
 
         $result = shell_exec($command);
-        var_dump($result);
+        if (preg_match('/ERROR/', $result)) {
 
+            var_dump(trim($result));
+
+            echo "It looks like there was an error." . PHP_EOL;
+            if ('y' !== strtolower($this->readLine(PHP_EOL . "Continue anyway? (y/n):"))) {
+                die("Exiting." . PHP_EOL . PHP_EOL);
+            }
+
+        }
     }
 
     private function getMySqlImportCommand($pathToSqlFile)
@@ -314,65 +310,93 @@ class MyBackupRestorer
         return "sudo mysql " .
             (!empty($this->config['DB_USERNAME']) ? "-u " . escapeshellarg($this->config['DB_USERNAME']) . " " : '') .
             (!empty($this->config['DB_PASSWORD']) ? "-p" . escapeshellarg($this->config['DB_PASSWORD']) . " " : '') .
+            (!empty($this->config['DB_DATABASE']) ? "--database=" . escapeshellarg($this->config['DB_DATABASE']) . " " : '') .
             (!empty($this->config['DB_PORT']) ? "--port=" . escapeshellarg($this->config['DB_PORT']) . " " : '') .
-            "< $pathToSqlFile "//."2>&1"
-            ;
+            "< $pathToSqlFile 2>&1";
     }
 
     private function extractFiles($tempZipPath)
     {
+        echo PHP_EOL . "*********** Extract files ***********." . PHP_EOL;
+
         $filePathInZip = $this->getFilePathInZip($tempZipPath);
         $filePathInflated = $this->getFilePathDestination();
 
-        echo "Extracting zip:{$filePathInZip} to $filePathInflated this may take a while." . PHP_EOL;
+        echo PHP_EOL . "Extracting zip:`{$filePathInZip}` to `$filePathInflated` this may take a while...";
         $this->extractFileFromZip($tempZipPath, $filePathInZip, $filePathInflated);
-        echo "Files extracted" . PHP_EOL;
+        echo " Files successfully extracted" . PHP_EOL;
 
     }
 
     private function getFilePathInZip($tempZipPath)
     {
 
-        echo "Examining the zip..." . PHP_EOL;
-
         $za = new \ZipArchive();
 
         $za->open($tempZipPath);
 
-        $guesses = [];
+        $filePath = ($GLOBALS['argv'][3] ?? null);
+        $fp = $filePath ? $za->getStream($filePath) : null;
 
-        for ($i = 0; $i < $za->numFiles; $i++) {
-            $stat = $za->statIndex($i);
-            $filePath = $stat['name'];
-            $fileName = basename($filePath);
-//            print_r($fileName . PHP_EOL);
+        if (!$fp) {
+
+            echo "Examining the zip..." . PHP_EOL;
+
+            $guesses = [];
+
+            for ($i = 0; $i < $za->numFiles; $i++) {
+                $stat = $za->statIndex($i);
+                $filePath = $stat['name'];
+                //$fileName = basename($filePath);
+                //print_r($filePath . PHP_EOL);
+                //print_r($fileName . PHP_EOL);
 
 
-            if (preg_match('/^(var\\/www\\/[^\\/]+)/i', $filePath, $matches)) {
-                if (!in_array($matches[1], $guesses)) {
-                    $guesses[] = $matches[1];
+                $guesses[] = [
+                    'path'       => $filePath,
+
+                    // Path length is the number of "/" or "\" it has
+                    // the lower the number, the closer it is to the root and therefore the more likely the user will use it
+                    'pathLength' => count(array_filter(preg_split('/[\\/\\\\]/', $filePath))) +
+                        (in_array(substr($filePath, -1), ['/', '\\']) ? 0 : 1)        // Files get +1 to their count,
+                ];
+            }
+
+            if (count($guesses)) {
+
+                // Order the array with paths closer to the root first
+                usort($guesses, function ($a, $b) {
+                    $a = $a['pathLength'];
+                    $b = $b['pathLength'];
+                    if ($a == $b) {
+                        return 0;
+                    }
+                    return ($a < $b) ? -1 : 1;
+                });
+
+                // Only output the first 10 items
+                $guesses = array_slice($guesses, 0, 10);
+
+                echo "We have made a few guesses here as to the path you want to extract:" . PHP_EOL;
+                foreach ($guesses as $guess) {
+                    echo " • {$guess['path']}" . PHP_EOL;
                 }
             }
-        }
 
-        if ($guesses) {
-            echo "Probable paths you want to extract" . PHP_EOL;
-            foreach ($guesses as $guess) {
-                echo " • {$guess}" . PHP_EOL;
-            }
-        }
+            while (!$fp) {
 
-        do {
+                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract:");
 
-            $filePath = $this->readLine("Enter a path within the zip file to extract:");
+                $fp = $za->getStream($filePath);
 
-            $fp = $za->getStream($filePath);
+                if (!$fp) {
+                    echo PHP_EOL . "Invalid path, try again.";
+                }
 
-            if (!$fp) {
-                echo "Invalid path, try again.";
             }
 
-        } while (!$fp);
+
+        }
 
         fclose($fp);
 
@@ -382,42 +406,71 @@ class MyBackupRestorer
     private function getFilePathDestination()
     {
 
-        $valid = false;
+        $filePath = ($GLOBALS['argv'][4] ?? null);
 
-        do {
+        while (!$filePath || file_exists($filePath)) {
+
 
             $filePath = $this->readLine("Enter a destination path you want to extract to eg /var/www/html: ");
 
-
             if (file_exists($filePath)) {
                 echo "This directory already exists, try again." . PHP_EOL;
-            } else {
-                $valid = true;
             }
-
-        } while (!$valid);
+        }
 
         return $filePath;
     }
 
     private function extractFileFromZip($tempZipPath, $filePathInZip, $filePathInflated)
     {
-        $za = new \ZipArchive();
 
-        $za->open($tempZipPath);
+        // Note, in Linux (possibly other *nix platforms too) there is no way to extract hidden files
+        // ( aka filename starting with a '.') from a Zip archive.
 
-        $fp = $za->getStream($filePathInZip);
-        if (!$fp) {
-            die("ERROR opening $filePathInZip in zip");
+        $filePathInZip = rtrim($filePathInZip, '\\/');
+        $filePathInflated = rtrim($filePathInflated, '\\/');
+
+        $zip = new \ZipArchive;
+        if ($zip->open($tempZipPath) === TRUE) {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = $zip->getNameIndex($i);
+                // Skip files not in $filePathInZip
+                if (strpos($name, "{$filePathInZip}/") !== 0) {
+                    continue;
+                }
+
+                // Determine output filename (removing the $filePathInZip prefix)
+                $file = $filePathInflated . '/' . substr($name, strlen($filePathInZip) + 1);
+                $fileIsDir = in_array(substr($file, -1), ['/', '\\']);
+
+// If the file is a directory
+                if ($fileIsDir) {
+                    // Create the directories if necessary
+                    if (!is_dir($file)) {
+                        mkdir($file, 0777, true);
+                    }
+                } else {
+                    // Create the directories if necessary
+                    $dir = dirname($file);
+                    if (!is_dir($dir)) {
+                        mkdir($dir, 0777, true);
+                    }
+
+                    // Read from Zip and write to disk
+                    $fpr = $zip->getStream($name);
+                    $fpw = fopen($file, 'w');
+                    while ($data = fread($fpr, 1024)) {
+                        fwrite($fpw, $data);
+                    }
+                    fclose($fpr);
+                    fclose($fpw);
+                }
+            }
+            $zip->close();
+        } else {
+            throw new \Exeception("Error opening zip file $tempZipPath");
         }
 
-        $local_fp = fopen($filePathInflated, "w");
-        while ($buf = fread($fp, 1024)) {
-            echo $buf;
-            fwrite($local_fp, $buf);
-        }
-        fclose($fp);
-        fclose($local_fp);
     }
 
     private function validateS3Download($s3Path, $localPath)
@@ -428,7 +481,7 @@ class MyBackupRestorer
         $md5 = md5_file($localPath);
 
         if ($etag !== $md5) {
-            die("ERROR: downloaded file is corrupt md5 '{$md5}' does not match etag '{$etag}'");
+            throw new Exception("ERROR: downloaded file is corrupt md5 '{$md5}' does not match etag '{$etag}'");
         }
 
         echo "success" . PHP_EOL;

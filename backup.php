@@ -6,10 +6,10 @@
  * Also, it will cleanup any old backups on S3
  *
  * HOW TO SETUP:
- *  1) Upload this file to your server to e.g.
+ *  1) Upload this file to your server to e.g. /var/www/backup/backup.php
  *      sudo mkdir /var/www/backup
  *      sudo chmod 777 /var/www/backup
- *      /var/www/backup/backup.php
+ *
  *  2) There are some dependencies:
  *      a) zip
  *          Check if it is installed by: zip
@@ -127,6 +127,37 @@ class MyBackupFunction
      */
     private function firstTimeSetup()
     {
+        echo "1";
+        // check zip dependency
+        $result = shell_exec("sudo zip -v 2>&1");
+        echo "1.5";
+        if (preg_match('/command not found/', $result)) {
+            throw new Exception("Zip dependency not installed. Install it with `sudo apt install zip`");
+        }
+
+        echo "2";
+        // check mysqldump dependency
+        $result = shell_exec("sudo mysqldump -V 2>&1");
+        echo "2.5";
+        if (preg_match('/command not found/', $result)) {
+            throw new Exception("mysqldump dependency not installed. Install it with `TODO`");
+        }
+
+        echo "3";
+        // check composer -v dependency
+        $result = shell_exec("sudo composer -v 2>&1");
+        if (preg_match('/command not found/', $result)) {
+            throw new Exception("composer dependency not installed. Install it with `TODO`");
+        }
+
+        echo "4";
+        // check mysql dependency (for restore.php)
+        $result = shell_exec("sudo mysql --version 2>&1");
+        if (preg_match('/command not found/', $result)) {
+            throw new Exception("mysql dependency not installed. Install it with `TODO`");
+        }
+        echo "5";
+
         // does the temp directory exist?
         if (!file_exists($this->getTempDirectory())) {
             echo "Initialisation: The temp directory doesn't exist so, creating it now." . PHP_EOL;
@@ -269,8 +300,15 @@ class MyBackupFunction
     {
         $tempMysqlBackupPath = $this->getTempDirectory(date('Y-m-d_H-i-s', time()) . '-mysql.sql');
 
-        $result = shell_exec($this->getMySqlDumpCommand($tempMysqlBackupPath, $config));
-        //var_dump($result);
+        $command = $this->getMySqlDumpCommand($tempMysqlBackupPath, $config);
+        echo $command;
+
+        $result = shell_exec($command);
+        // var_dump($result);
+
+        if (!is_file($tempMysqlBackupPath) || !is_readable($tempMysqlBackupPath)) {
+            throw new Exception("Error while creating MYSQL dump");
+        }
 
         return $tempMysqlBackupPath;
     }
@@ -316,9 +354,13 @@ class MyBackupFunction
         $outputTempZipFileName = $this->getOutputTempZipFileName();
 
         $tempZipPath = $this->getTempDirectory($outputTempZipFileName);
-        echo "zip -r $tempZipPath $pathsToBackup 2>&1";
+        echo "zip -r $tempZipPath $pathsToBackup 2>&1\n";
         $result = shell_exec("zip -r $tempZipPath $pathsToBackup 2>&1");
         //var_dump($result);
+
+        if (!is_file($tempZipPath) || !is_readable($tempZipPath) || filesize($tempZipPath) === 0) {
+            throw new Exception("Error while creating zip file.\n" . $result . "\n");
+        }
 
         return $tempZipPath;
     }

@@ -59,14 +59,17 @@ return [
 
     'restore_config' => [
         // AWS S3 settings
-        'AWS_REGION' => 'ap-southeast-2',
-        'AWS_BUCKET' => 'test-bucket',
-        'AWS_KEY'    => '6GMC3CKCFAKEJS2AB9UB',
-        'AWS_SECRET' => 'Gj5gdMgW1T/FAKE/VVd4L9AkKI2zmENwcjP3f89n',
+        'AWS_REGION'  => 'ap-southeast-2',
+        'AWS_BUCKET'  => 'test-bucket',
+        'AWS_KEY'     => '6GMC3CKCFAKEJS2AB9UB',
+        'AWS_SECRET'  => 'Gj5gdMgW1T/FAKE/VVd4L9AkKI2zmENwcjP3f89n',
 
+        // I suggest leaving DB_USERNAME and DB_PASSWORD blank unless they have access to all databases
         'DB_USERNAME' => 'root',
         'DB_PASSWORD' => 'secret-password',
         'DB_PORT'     => '3306',
+        // This will be the default selected database. Leave this blank if you are importing multiple databases
+        'DB_DATABASE' => 'my-database',
     ]
 
 ];
