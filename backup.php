@@ -88,7 +88,7 @@ try {
 
     /*********************** /CONFIG ***********************/
 
-    echo "################## Starting at " . date('c') . "..." . PHP_EOL;
+    echo PHP_EOL . "################## Starting at " . date('c') . "..." . PHP_EOL;
 
     $myBackup = new MyBackupFunction($CONFIG['zips']);
     $myBackup->run();
@@ -98,7 +98,7 @@ try {
     throw $e;
 }
 
-die("Done in: " . (microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"]) . " sec" . PHP_EOL);
+die("Done in: " . (microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"]) . " sec" . PHP_EOL . PHP_EOL);
 
 
 class MyBackupFunction
@@ -127,36 +127,29 @@ class MyBackupFunction
      */
     private function firstTimeSetup()
     {
-        echo "1";
         // check zip dependency
         $result = shell_exec("sudo zip -v 2>&1");
-        echo "1.5";
         if (preg_match('/command not found/', $result)) {
             throw new Exception("Zip dependency not installed. Install it with `sudo apt install zip`");
         }
 
-        echo "2";
         // check mysqldump dependency
         $result = shell_exec("sudo mysqldump -V 2>&1");
-        echo "2.5";
         if (preg_match('/command not found/', $result)) {
             throw new Exception("mysqldump dependency not installed. Install it with `TODO`");
         }
 
-        echo "3";
         // check composer -v dependency
         $result = shell_exec("sudo composer -v 2>&1");
         if (preg_match('/command not found/', $result)) {
             throw new Exception("composer dependency not installed. Install it with `TODO`");
         }
 
-        echo "4";
         // check mysql dependency (for restore.php)
         $result = shell_exec("sudo mysql --version 2>&1");
         if (preg_match('/command not found/', $result)) {
             throw new Exception("mysql dependency not installed. Install it with `TODO`");
         }
-        echo "5";
 
         // does the temp directory exist?
         if (!file_exists($this->getTempDirectory())) {
@@ -221,6 +214,8 @@ class MyBackupFunction
                 throw new Exception("Error while creating backup");
             }
 
+            echo PHP_EOL;
+            echo PHP_EOL;
             echo "Backup successfully created at: $zip" . PHP_EOL;
             echo PHP_EOL;
 
@@ -242,7 +237,7 @@ class MyBackupFunction
 
         foreach ($config as $configGroup) {
 
-            if ($configGroup['files']) {
+            if (!empty($configGroup['files'])) {
                 foreach ($configGroup['files'] as $file) {
 
                     if (!file_exists($file)) {
@@ -252,7 +247,7 @@ class MyBackupFunction
                 }
             }
 
-            if ($configGroup['mysql']) {
+            if (!empty($configGroup['mysql'])) {
 
                 // mysql -h host -u user -p<whatever> -e"quit"
                 // TODO
@@ -264,7 +259,7 @@ class MyBackupFunction
 
     private function createBackup($configGroup)
     {
-        echo "******************* Creating backup..." . PHP_EOL;
+        echo PHP_EOL . "******************* Creating backup..." . PHP_EOL . PHP_EOL;
 
         $filesToDelete = [];
         $filesToAddToZip = $configGroup['files'];
@@ -273,9 +268,9 @@ class MyBackupFunction
         foreach ($configGroup['mysql'] as $mysqlConnection) {
 
             // First backup Mysql to the temp directory
-            echo "Dumping mysql to temporary file..." . PHP_EOL;
 
             $tempMysqlBackupPath = $this->createMySqlDump($mysqlConnection);
+
 
             $filesToAddToZip[] = $tempMysqlBackupPath;
             $filesToDelete[] = $tempMysqlBackupPath;
@@ -283,7 +278,6 @@ class MyBackupFunction
         }
 
         // zip everything together
-        echo "Creating zip..." . PHP_EOL;
         $zipPath = $this->createZip($filesToAddToZip);
 
         // We no longer need the mysql backup because it exists in the zip file
@@ -301,9 +295,11 @@ class MyBackupFunction
         $tempMysqlBackupPath = $this->getTempDirectory(date('Y-m-d_H-i-s', time()) . '-mysql.sql');
 
         $command = $this->getMySqlDumpCommand($tempMysqlBackupPath, $config);
-        echo $command;
+        echo $command . PHP_EOL;
 
+        echo "Dumping mysql to temporary file...";
         $result = shell_exec($command);
+        echo "done" . PHP_EOL;
         // var_dump($result);
 
         if (!is_file($tempMysqlBackupPath) || !is_readable($tempMysqlBackupPath)) {
@@ -354,8 +350,12 @@ class MyBackupFunction
         $outputTempZipFileName = $this->getOutputTempZipFileName();
 
         $tempZipPath = $this->getTempDirectory($outputTempZipFileName);
-        echo "zip -r $tempZipPath $pathsToBackup 2>&1\n";
-        $result = shell_exec("zip -r $tempZipPath $pathsToBackup 2>&1");
+        $command = "zip -r $tempZipPath $pathsToBackup 2>&1";
+        echo PHP_EOL . $command . PHP_EOL;
+        echo "Creating zip...";
+
+        $result = shell_exec($command);
+        echo "done";
         //var_dump($result);
 
         if (!is_file($tempZipPath) || !is_readable($tempZipPath) || filesize($tempZipPath) === 0) {
@@ -429,7 +429,7 @@ class MyBackupFunction
     private function uploadToS3($zip, $config, $client)
     {
 
-        echo "******************* Uploading backup to S3..." . PHP_EOL;
+        echo PHP_EOL . "Uploading backup to S3...";
 
 
         // Send a PutObject request and get the result object.
@@ -442,8 +442,9 @@ class MyBackupFunction
             'SourceFile' => $zip,
         ]);
 
+        echo ' done' . PHP_EOL;
+
         if (!$this->validateS3FileUpload($zip, $result)) {
-            echo "MD5 check of S3 file upload failed (upload to S3 failed)" . PHP_EOL;
             throw new Exception("MD5 check of S3 file upload failed (upload to S3 failed)");
         }
 
@@ -451,13 +452,12 @@ class MyBackupFunction
 
     private function validateS3FileUpload($backupFile, $result)
     {
-        echo "Validating S3 file upload..." . PHP_EOL;
+        echo "Validating S3 file upload...";
 
         $etag = empty($result['ETag']) ? '' : $result['ETag'];
 
         if (!$etag) {
-            echo "Couldn't retrieve ETag of uploaded file..." . PHP_EOL;
-            return false;
+            throw new Exception("Couldn't retrieve ETag of uploaded file...");
         }
 
         $etag = str_replace('"', '', $etag);
@@ -465,13 +465,12 @@ class MyBackupFunction
         $fileMd5 = md5_file($backupFile);
 
         if (md5_file($backupFile) . '' === $etag . '') {
-            echo "SUCCESS: File on S3 is valid..." . PHP_EOL;
+            echo " upload is valid" . PHP_EOL;
             return true;
         }
 
-        echo "ERROR: Our MD5=$fileMd5 does not match AWS's returned ETag=$etag" . PHP_EOL;
+        throw new Exception("ERROR: Our MD5=$fileMd5 does not match AWS's returned ETag=$etag");
 
-        return false;
     }
 
 }
@@ -487,7 +486,7 @@ class CleanUpS3
      */
     public static function clean($config, $client)
     {
-        echo "******************* Cleaning up old backups on S3..." . PHP_EOL;
+        echo PHP_EOL . "******************* Cleaning up old backups on S3..." . PHP_EOL . PHP_EOL;
 
 //        self::createDummyData($config, $client);
 //        die("created dummy data");
@@ -500,10 +499,11 @@ class CleanUpS3
         //die(json_encode($deleteTheseFiles) . PHP_EOL);
 
         if ($deleteTheseFiles) {
-            echo "Deleting " . count($deleteTheseFiles) . " old backups off S3" . PHP_EOL;
+            echo "Deleting " . count($deleteTheseFiles) . " old backups off S3...";
             self::deleteFilesOffS3($deleteTheseFiles, $config, $client);
+            echo ' done' . PHP_EOL;
         } else {
-            echo "No old backups found on S3" . PHP_EOL;
+            echo "No action takes (No old backups found on S3)" . PHP_EOL;
         }
 
     }

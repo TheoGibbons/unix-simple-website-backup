@@ -79,7 +79,7 @@ class MyBackupRestorer
     {
         $allS3Archives = $this->getAllFilesOnS3();
 
-        echo PHP_EOL . "*********** S3 download ***********." . PHP_EOL;
+        echo PHP_EOL . "*********** S3 download ***********" . PHP_EOL;
         echo "Here is a list of all files within S3." . PHP_EOL;
 
         foreach ($allS3Archives as $file) {
@@ -217,7 +217,7 @@ class MyBackupRestorer
 
     private function extractAndImportMysql($tempZipPath)
     {
-        echo PHP_EOL . "*********** MYSQL import ***********." . PHP_EOL;
+        echo PHP_EOL . "*********** MYSQL import ***********" . PHP_EOL;
         echo "Extracting Mysql dump from the zip." . PHP_EOL;
         $pathToSqlFile = $this->extractMysqlFromZip($tempZipPath);
         echo "Extracted sql file to {$pathToSqlFile}" . PHP_EOL . PHP_EOL;
@@ -423,9 +423,6 @@ class MyBackupRestorer
 
     private function extractFileFromZip($tempZipPath, $filePathInZip, $filePathInflated)
     {
-
-        // Note, in Linux (possibly other *nix platforms too) there is no way to extract hidden files
-        // ( aka filename starting with a '.') from a Zip archive.
 
         $filePathInZip = rtrim($filePathInZip, '\\/');
         $filePathInflated = rtrim($filePathInflated, '\\/');
