@@ -7,7 +7,7 @@ Also, it will clean-up any old backups on S3.
  
 Ideal use case: You have a single small webserver which has one or more websites and one or more MYSQL databases, and you want to backup the files and MYSQL database to AWS S3.
 
-####Use case example
+#### Use case example
  - I have two websites on my server located:
    - /var/www/my-website
    - /var/www/my-other-website
@@ -18,33 +18,36 @@ Ideal use case: You have a single small webserver which has one or more websites
    - /var/www/my-other-website
  - I want to then upload this zip file to AWS S3 daily at 3am
 
-##HOW TO SETUP:
+## HOW TO SETUP:
   1. Upload this file to your server to e.g. **/var/www/backup/backup.php**
      > sudo mkdir /var/www/backup<br> 
      sudo chmod 777 /var/www/backup
 
-  1. There are some dependencies:
-     2. zip
+  2. There are some dependencies:
+     1. zip
         - Check if it is installed by: **zip**
         - Install it with: **sudo apt install zip**
      2. mysqldump
         - Check if it is installed by: **mysqldump -V**
         - Install it with: TODO
-     2. composer
+     3. composer
         - Check if it is installed by: **composer -v**
         - Install it with: TODO
           - NOTE: If you don't want to install composer on the server:
-            3. Upload '**backup.php-vendor.zip**' to the server and:
-            3. cd /var/www/backup
+            1. Upload '**backup.php-vendor.zip**' to the server and:
+            2. cd /var/www/backup
             3. unzip backup.php-vendor.zip
-            3. rm backup.php-vendor.zip
-  1. Create a new IAM user account on AWS and grant permission to put ,get, etc files in the bucket:
-      2. login to AWS console
+            4. rm backup.php-vendor.zip
+     4. php
+        - Check if it is installed by: **php -v**
+        - Install it with: TODO
+  3. Create a new IAM user account on AWS and grant permission to put ,get, etc files in the bucket:
+      1. login to AWS console
       2. Generate a new user in IAM with Programmatic access and get their key and secret (used in the* CONFIG* block below)
-      2. Create a new S3 bucket
-      2. Go to "Permissions" -> "Bucket Policy" for the newly created S3 bucket
-         3. Use the "Policy generator" to generate a new policy and add it.
-         3. NOTE: For the "Resource" you will need to add:
+      3. Create a new S3 bucket
+      4. Go to "Permissions" -> "Bucket Policy" for the newly created S3 bucket
+         1. Use the "Policy generator" to generate a new policy and add it.
+         2. NOTE: For the "Resource" you will need to add:
             - ARN for the bucket
             - ARN for the bucket contents (append "/*")
             - e.g.
@@ -72,20 +75,20 @@ Ideal use case: You have a single small webserver which has one or more websites
             }
             ```
 
-  1. Create **.config.php** file (copy from **.config.example.php** and update)
-  1. Manually run the backup just to test if there are any errors:
+  4. Create **.config.php** file (copy from **.config.example.php** and update)
+  5. Manually run the backup just to test if there are any errors:
      > **php /var/www/backup/backup.php**
-  1. Add this to Crontab:
+  6. Add this to Crontab:
      - $ crontab -e
        - Add the below line to the file. NOTE: https://crontab.guru/
          > **0 14 * * * php /var/www/backup/backup.php**
 
-##Restore
+## Restore
  1. Run
     > **php /var/www/backup/restore.php**
- 1. Just follow the wizard
+ 2. Just follow the wizard
 
-##Clean up of old backups
+## Clean up of old backups
 What old backups are kept on S3?
   - Any backups older than one week and there are multiple backups on that day: delete the duplicates
   - Any backups older than one year should only be kept if they were taken on the first of Jan
@@ -94,10 +97,10 @@ What old backups are kept on S3?
 
 
 
-##TODO:
-  1) restore.php should call the firstTimeSetup of this script
-  2) After zipping we should check that all the files, we wanted to skip actually exist in the zip file
-  3) Add a webhook or some sort of email callback that gets fired when this script throws an exception
-  4) Add a mysql options array to .config for https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html#mysqldump-option-summary
-  5) validateConfig() validate the MYSQL config.
+## TODO:
+  1. restore.php should call the firstTimeSetup of this script
+  2. After zipping we should check that all the files, we wanted to skip actually exist in the zip file
+  3. Add a webhook or some sort of email callback that gets fired when this script throws an exception
+  4. Add a mysql options array to .config for https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html#mysqldump-option-summary
+  5. validateConfig() validate the MYSQL config.
 
