@@ -80,8 +80,8 @@ Ideal use case: You have a single small webserver which has one or more websites
      > **php /var/www/backup/backup.php**
   6. Add this to Crontab:
      - $ crontab -e
-       - Add the below line to the file. NOTE: https://crontab.guru/
-         > **0 14 * * * php /var/www/backup/backup.php**
+       - Add the below line to the file. NOTE: https://crontab.guru/#0_3_*_*_*
+         > **0 3 * * * php /var/www/backup/backup.php**
 
 ## Restore
  1. Run
