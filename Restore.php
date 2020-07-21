@@ -46,6 +46,10 @@ class MyBackupRestorer
             ]
         ]);
 
+        if (!class_exists('ZipArchive')) {
+            die("PHP's ZipArchive is missing\nTo install run:\n$ sudo apt-get install php" . $this->getMajorPHPVersion() . "-zip\n$ sudo service apache2 restart\n\n");
+        }
+
     }
 
     public function run()
@@ -289,7 +293,7 @@ class MyBackupRestorer
 
             while (!$fp) {
 
-                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file) OR type \"SKIP\" (no quotes):");
+                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file) OR type SKIP :");
 
                 if ($filePath === 'SKIP') {
                     return null;
@@ -351,7 +355,7 @@ class MyBackupRestorer
 
     private function extractFiles($tempZipPath)
     {
-        echo PHP_EOL . "*********** Extract files ***********." . PHP_EOL;
+        echo PHP_EOL . "*********** Extract files ***********" . PHP_EOL;
 
         $filePathInZip = $this->getFilePathInZip($tempZipPath);
         if (!$filePathInZip) {
@@ -362,9 +366,7 @@ class MyBackupRestorer
 
         $filePathInflated = $this->getFilePathDestination();
 
-        echo PHP_EOL . "Extracting zip:`{$filePathInZip}` to `$filePathInflated` this may take a while...";
         $this->extractFileFromZip($tempZipPath, $filePathInZip, $filePathInflated);
-        echo " Files successfully extracted" . PHP_EOL;
 
     }
 
@@ -426,7 +428,7 @@ class MyBackupRestorer
                 // Only output the first 10 items
                 $guesses = array_slice($guesses, 0, 10);
 
-                echo "We have made a few guesses here as to the path you want to extract:" . PHP_EOL;
+                echo "Here are some examples of paths you could extract:" . PHP_EOL;
                 foreach ($guesses as $guess) {
                     echo " • {$guess['path']}" . PHP_EOL;
                 }
@@ -434,7 +436,7 @@ class MyBackupRestorer
 
             while (!$fp) {
 
-                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract OR type \"SKIP\" (no quotes):");
+                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract OR type SKIP :");
 
                 if ($filePath === 'SKIP') {
                     return null;
@@ -471,7 +473,20 @@ class MyBackupRestorer
             $filePath = $this->readLine("Enter a destination path you want to extract to eg /var/www/html: ");
 
             if (file_exists($filePath)) {
-                echo "This directory already exists, try again." . PHP_EOL;
+
+                if ('y' !== strtolower($this->readLine(PHP_EOL . "This directory already exists, override? (y/n): "))) {
+                    echo "Try again." . PHP_EOL;
+                } else {
+
+                    echo "Deleting `{$filePath}`...";
+                    shell_exec("sudo rm -r {$filePath}");
+                    echo " done" . PHP_EOL;
+
+                    if (file_exists($filePath)) {
+                        echo "ERROR could not delete directory. Try again." . PHP_EOL;
+                    }
+
+                }
             }
         }
 
@@ -481,11 +496,86 @@ class MyBackupRestorer
     private function extractFileFromZip($tempZipPath, $filePathInZip, $filePathInflated)
     {
 
+        // Using unixs `unzip` command does not allow extracting subdirectories to a specified location
+        // e.g. if a zip contains a file "path/in/zip/text.txt" then we run `unzip myzip.zip 'path/in/*' -d '/out'`
+        // will extract "text.txt" to "/out/path/in/zip/text.txt" instead of the intended "/out/zip/text.txt"
+
+        // Using PHP's ZipArchive we can achieve correct subdirectory extraction but it is incredibly slow
+
+        // So my current solution is to extract the subdirectory to a temporary directory then move it to its correct location.
+        // This isn't ideal because it means we need to worry about directory permissions for another directory.
+        // Also, we have to worry about exceeding the max path length
+
+        // --------------------------------------
+
+        // If Zip file contains `path/in/zip/text.txt` and I want to extract it to /out/zip/text.txt
+
+        // Get a unique non existent directory in the temp directory folder
+        $tempDir = Utils::getTempSubDirectory('z');
+
+        // Run the unzip using unixs native unzipper
+        // unzip /path/to/archive.zip 'in/archive/folder/*' -d /path/to/unzip/to
+        $command = "unzip -q {$tempZipPath} '" . rtrim($filePathInZip, '\\/') . "/*' -d " . rtrim($tempDir, '\\/') . "";
+
+        echo PHP_EOL . $command . PHP_EOL . PHP_EOL;
+
+        echo "Extracting zip:`{$filePathInZip}` to temporary directory `{$tempDir}` this may take a while...";
+        $result = shell_exec($command);
+        echo " done" . PHP_EOL . PHP_EOL;
+
+        // Now `path/in/zip/text.txt` exists at location `path-to-tmp-folder/path/in/zip/text.txt`
+        // So we need to move it to /out/zip/text.txt
+
+        echo "Moving extracted directory `{$tempDir}` -> `{$filePathInflated}`...";
+        rename(rtrim($tempDir, '\\/') . '/' . rtrim($filePathInZip, '\\/'), $filePathInflated);
+        echo "done" . PHP_EOL . PHP_EOL;
+
+        echo "Cleaning up...";
+        shell_exec('sudo rm -r ' . addslashes($tempDir));
+        echo "done" . PHP_EOL . PHP_EOL;
+
+        return;
+
+
+        /* This extracts to /var/www/html/var/www/html/composer.json.2.3.3.bak
         $filePathInZip = rtrim($filePathInZip, '\\/');
         $filePathInflated = rtrim($filePathInflated, '\\/');
 
         $zip = new \ZipArchive;
         if ($zip->open($tempZipPath) === TRUE) {
+
+            $zip->extractTo($filePathInflated, ['var/www/html/composer.json.2.3.3.bak']);
+            $zip->close();
+            return;
+
+        } else {
+            throw new \Exeception("Error opening zip file $tempZipPath");
+        }
+        */
+
+        /* This only extracts the folder (none of the contents)
+        $filePathInZip = rtrim($filePathInZip, '\\/');
+        $filePathInflated = rtrim($filePathInflated, '\\/');
+
+        $zip = new \ZipArchive;
+        if ($zip->open($tempZipPath) === TRUE) {
+
+            $zip->extractTo($filePathInflated, $filePathInZip);
+            $zip->close();
+            return;
+
+        } else {
+            throw new \Exeception("Error opening zip file $tempZipPath");
+        }
+        */
+
+        /* This works 100% except it is incredibly slow for large archives
+        $filePathInZip = rtrim($filePathInZip, '\\/');
+        $filePathInflated = rtrim($filePathInflated, '\\/');
+
+        $zip = new \ZipArchive;
+        if ($zip->open($tempZipPath) === TRUE) {
+
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $name = $zip->getNameIndex($i);
                 // Skip files not in $filePathInZip
@@ -497,7 +587,7 @@ class MyBackupRestorer
                 $file = $filePathInflated . '/' . substr($name, strlen($filePathInZip) + 1);
                 $fileIsDir = in_array(substr($file, -1), ['/', '\\']);
 
-// If the file is a directory
+                // If the file is a directory
                 if ($fileIsDir) {
                     // Create the directories if necessary
                     if (!is_dir($file)) {
@@ -524,6 +614,7 @@ class MyBackupRestorer
         } else {
             throw new \Exeception("Error opening zip file $tempZipPath");
         }
+        */
 
     }
 
@@ -540,6 +631,17 @@ class MyBackupRestorer
 
         echo "success" . PHP_EOL;
 
+    }
+
+    /**
+     * Return PHP version number like "7.4"
+     *
+     * @return false|int
+     */
+    private function getMajorPHPVersion()
+    {
+        preg_match("#^\d.\d#", phpversion(), $match);
+        return $match[0];
     }
 
 }
@@ -575,6 +677,26 @@ class Utils
         } else {
             return $outFilePath = __DIR__ . '/temp';
         }
+    }
+
+    public static function getTempSubDirectory($subdir)
+    {
+
+        $subdir = trim($subdir, '\\/');
+
+        $i = 0;
+        do {
+
+            $upCountedPath =
+                $subdir .     // Directory
+                ($i++ ? "_" . str_pad($i, 2, "0", STR_PAD_LEFT) : '')   // Upcount "_02"
+            ;
+
+            $outFilePath = __DIR__ . '/temp' . ('/' . ltrim($upCountedPath, '/'));
+
+        } while (file_exists($outFilePath));
+
+        return $outFilePath;
     }
 
 }

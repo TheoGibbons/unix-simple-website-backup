@@ -103,4 +103,15 @@ What old backups are kept on S3?
   3. Add a webhook or some sort of email callback that gets fired when this script throws an exception
   4. Add a mysql options array to .config for https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html#mysqldump-option-summary
   5. validateConfig() validate the MYSQL config.
-
+  6. restore.php currently does [i-iv] whereas it would be better if it did [a-d]
+     1. Ask for MYSQL settings
+     2. Import MYSQL
+     3. Ask file input settings
+     4. Extract file
+        1. Ask for MYSQL settings
+        2. Ask file input settings
+        3. Import MYSQL
+        4. Extract file
+  7. temp directory used should be the systems /tmp directory
+        
+        
