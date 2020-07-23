@@ -43,7 +43,7 @@ Ideal use case: You have a single small webserver which has one or more websites
         - Install it with: TODO
   3. Create a new IAM user account on AWS and grant permission to put ,get, etc files in the bucket:
       1. login to AWS console
-      2. Generate a new user in IAM with Programmatic access and get their key and secret (used in the* CONFIG* block below)
+      2. Generate a new IAM user with Programmatic access (no permissions are required) add their key and secret to the .config file
       3. Create a new S3 bucket
       4. Go to "Permissions" -> "Bucket Policy" for the newly created S3 bucket
          1. Use the "Policy generator" to generate a new policy and add it.
@@ -89,7 +89,7 @@ Ideal use case: You have a single small webserver which has one or more websites
  2. Just follow the wizard
 
 ## Clean up of old backups
-What old backups are kept on S3?
+Which backups are kept?
   - Any backups older than one week and there are multiple backups on that day: delete the duplicates
   - Any backups older than one year should only be kept if they were taken on the first of Jan
   - Any backups older than one month should only be kept if they were taken on the first of the month
@@ -97,7 +97,7 @@ What old backups are kept on S3?
 
 
 
-## TODO:
+## Future updates:
   1. restore.php should call the firstTimeSetup of this script
   2. After zipping we should check that all the files, we wanted to skip actually exist in the zip file
   3. Add a webhook or some sort of email callback that gets fired when this script throws an exception
@@ -112,6 +112,9 @@ What old backups are kept on S3?
         2. Ask file input settings
         3. Import MYSQL
         4. Extract file
-  7. temp directory used should be the systems /tmp directory
+  7. temp directory should be the systems /tmp directory
+  8. Custom string you can set in the .env file to append to the file name to help identify zip files e.g. 2020-07-19_15-00-01-{custom string}.zip
+  9. Remove all the crazy automatic creation of the composer.json file and auto running of `composer update`. composer.json 
+  should be a normal file and `composer update` should be left up to the admin to run   
         
         
