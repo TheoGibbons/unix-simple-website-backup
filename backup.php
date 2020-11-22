@@ -287,7 +287,7 @@ class MyBackupFunction
         $outputTempZipFileName = $this->getOutputTempZipFileName();
 
         $tempZipPath = $this->getTempDirectory($outputTempZipFileName);
-        $command = "zip -r $tempZipPath $pathsToBackup 2>&1";
+        $command = "zip -r -y $tempZipPath $pathsToBackup 2>&1";
         echo PHP_EOL . $command . PHP_EOL;
         echo "Creating zip...";
 
