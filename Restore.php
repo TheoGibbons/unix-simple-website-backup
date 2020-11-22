@@ -57,6 +57,8 @@ class MyBackupRestorer
 
         $s3ArchiveKey = null;
 
+        $this->checkPrerequisits();
+
         if (!$s3ArchiveKey) {
             $s3ArchiveKey = $this->selectS3Backup();
         }
@@ -73,6 +75,15 @@ class MyBackupRestorer
 
         echo "DONE SUCCESS." . PHP_EOL . "Remember to setup file permissions." . PHP_EOL . PHP_EOL;
 
+    }
+
+    private function checkPrerequisits()
+    {
+        if (!class_exists('\\ZipArchive')) {
+            echo "ZipArchive class not found." . PHP_EOL;
+            echo "You can probably install it with `sudo apt-get install php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-zip`." . PHP_EOL;
+            die("DONE FAILED.");
+        }
     }
 
     /**
@@ -293,7 +304,7 @@ class MyBackupRestorer
 
             while (!$fp) {
 
-                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file) OR type SKIP :");
+                $filePath = $this->readLine(PHP_EOL . "Enter path to the .sql file (in the zip file) OR type \"SKIP\" (no quotes):");
 
                 if ($filePath === 'SKIP') {
                     return null;
@@ -366,7 +377,9 @@ class MyBackupRestorer
 
         $filePathInflated = $this->getFilePathDestination();
 
+        echo PHP_EOL . "Extracting zip:`{$filePathInZip}` to `$filePathInflated` this may take a while...";
         $this->extractFileFromZip($tempZipPath, $filePathInZip, $filePathInflated);
+        echo " Files successfully extracted" . PHP_EOL;
 
     }
 
@@ -428,7 +441,7 @@ class MyBackupRestorer
                 // Only output the first 10 items
                 $guesses = array_slice($guesses, 0, 10);
 
-                echo "Here are some examples of paths you could extract:" . PHP_EOL;
+                echo "We have made a few guesses here as to the path you want to extract:" . PHP_EOL;
                 foreach ($guesses as $guess) {
                     echo " • {$guess['path']}" . PHP_EOL;
                 }
@@ -436,7 +449,7 @@ class MyBackupRestorer
 
             while (!$fp) {
 
-                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract OR type SKIP :");
+                $filePath = $this->readLine(PHP_EOL . "Enter a path within the zip file to extract OR type \"SKIP\" (no quotes):");
 
                 if ($filePath === 'SKIP') {
                     return null;

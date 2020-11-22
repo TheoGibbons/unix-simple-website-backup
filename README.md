@@ -13,7 +13,7 @@ Ideal use case: You have a single small webserver which has one or more websites
    - /var/www/my-other-website
  - Each of these websites has a MYSQL database
  - I want to create a zip file containing
-   - .sql dump file of both the MYSQL databases
+   - 2 .sql dump files (one for each MYSQL database)
    - /var/www/my-website
    - /var/www/my-other-website
  - I want to then upload this zip file to AWS S3 daily at 3am
@@ -43,7 +43,7 @@ Ideal use case: You have a single small webserver which has one or more websites
         - Install it with: TODO
   3. Create a new IAM user account on AWS and grant permission to put ,get, etc files in the bucket:
       1. login to AWS console
-      2. Generate a new IAM user with Programmatic access (no permissions are required) add their key and secret to the .config file
+      2. Generate a new user in IAM with Programmatic access and get their key and secret (used in the* CONFIG* block below)
       3. Create a new S3 bucket
       4. Go to "Permissions" -> "Bucket Policy" for the newly created S3 bucket
          1. Use the "Policy generator" to generate a new policy and add it.
@@ -78,7 +78,7 @@ Ideal use case: You have a single small webserver which has one or more websites
   4. Create **.config.php** file (copy from **.config.example.php** and update)
   5. Manually run the backup just to test if there are any errors:
      > **php /var/www/backup/backup.php**
-  6. Add this to Crontab:
+  6. Schedule it to run daily. Add this to Crontab:
      - $ crontab -e
        - Add the below line to the file. NOTE: https://crontab.guru/#0_3_*_*_*
          > **0 3 * * * php /var/www/backup/backup.php**
@@ -89,7 +89,9 @@ Ideal use case: You have a single small webserver which has one or more websites
  2. Just follow the wizard
 
 ## Clean up of old backups
-Which backups are kept?
+Whenever a backup is created old backups will be deleted.
+
+What old backups are kept on S3?
   - Any backups older than one week and there are multiple backups on that day: delete the duplicates
   - Any backups older than one year should only be kept if they were taken on the first of Jan
   - Any backups older than one month should only be kept if they were taken on the first of the month
@@ -97,10 +99,10 @@ Which backups are kept?
 
 
 
-## Future updates:
-  1. restore.php should call the firstTimeSetup of this script
+## TODO:
+  1. restore.php should call the firstTimeSetup of the backup script
   2. After zipping we should check that all the files, we wanted to skip actually exist in the zip file
-  3. Add a webhook or some sort of email callback that gets fired when this script throws an exception
+  3. Add a webhook or some sort of email callback that gets fired when this script throws an exception. SNS?
   4. Add a mysql options array to .config for https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html#mysqldump-option-summary
   5. validateConfig() validate the MYSQL config.
   6. restore.php currently does [i-iv] whereas it would be better if it did [a-d]
