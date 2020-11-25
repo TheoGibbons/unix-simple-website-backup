@@ -63,12 +63,6 @@ class MyBackupFunction
             throw new Exception("mysqldump dependency not installed. Install it with `TODO`");
         }
 
-        // check composer -v dependency
-        $result = shell_exec("sudo composer -v 2>&1");
-        if (preg_match('/command not found/', $result)) {
-            throw new Exception("composer dependency not installed. Install it with `TODO`");
-        }
-
         // check mysql dependency (for restore.php)
         $result = shell_exec("sudo mysql --version 2>&1");
         if (preg_match('/command not found/', $result)) {
@@ -108,6 +102,13 @@ class MyBackupFunction
         // Make sure that composer dependencies have been installed
         $composerAutoLoadFile = __DIR__ . '/vendor/autoload.php';
         if (!file_exists($composerAutoLoadFile)) {
+
+            // check composer -v dependency
+            $result = shell_exec("sudo composer -v 2>&1");
+            if (preg_match('/command not found/', $result)) {
+                throw new Exception("composer dependency not installed. Install it with `TODO` OR upload a copy of the vendor directory");
+            }
+
             echo "Initialisation: Composer dependencies have not been installed. So, install them now" . PHP_EOL;
 
             $result = shell_exec('sudo composer update 2>&1');      // Shouldn't really use sudo here. But, in this case I dont think it matters.
